@@ -16,6 +16,8 @@ import textwrap
 from pathlib import Path
 
 
+# CUSTOMIZABLE SETTINGS
+
 THUMB_SIZE = QSize(128,72)
 FLAGS = Qt.KeepAspectRatioByExpanding
 LIST_WIDTH = 400
@@ -74,23 +76,21 @@ class Window(QWidget):
         groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
         self.scroll.setWidget(groupbox)
 
-        
-
         self.line = QLineEdit(self)
         self.line.returnPressed.connect(self.clickMethod)
         self.line.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
 
         self.container = QWidget()
-
         self.container.setAttribute(Qt.WA_DontCreateNativeAncestors)
         self.container.setAttribute(Qt.WA_NativeWindow)       
         self.player = mpv.MPV(wid=str(int(self.container.winId())),
                 ytdl=True, 
                 input_default_bindings=True, 
                 input_vo_keyboard=True,
-                scripts='/home/hud/.config/mpv/scripts/live-filters.lua', # add a script here
+                scripts=str(Path.home())+'.config/mpv/scripts/live-filters.lua', # option to add custom script / currently no way of importing multiple scripts with MPV API
         )
 
+        # TODO: allow exit key sequences while mpv window is active
         self.player.register_key_binding('q', '')
 
         sublayout = QVBoxLayout()
@@ -131,7 +131,7 @@ class Window(QWidget):
                 title = '\n'.join(textwrap.wrap(self.data['titles'][i], TEXT_LENGTH)[:2])
                 if len(self.data['titles'][i]) > TEXT_LENGTH*2: 
                     title = title + '...'
-            else:
+            else: # catch errors from youtube-dl failing to capture video title
                 title = '[TITLE MISSING]'
 
             text =  title + '\n' + self.data['durations'][i] + ' | ' + self.data['dates'][i] + '\n' + self.data['views'][i] + ' views | rated ' + self.data['ratings'][i] 
@@ -156,16 +156,17 @@ class Window(QWidget):
         self.url = label.url
         self.player.play(self.url)
 
-def grabDataYT(search_term, search=True, limit=10): # takes url, number of videos, login method, credentials (which can be a blank two item list i.e., c=['',''])
+def grabDataYT(search_term, search=True, limit=10):
     
     data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 'durations': [], 'views': [], 'ratings': [], 'dates': []}
 
     if search:
         pl_url = 'https://www.youtube.com/results?search_query='+ search_term.replace(' ','+')
-    else:
+
+    else: # allow start page to be set by url rather than search term
         pl_url=search_term
 
-    meta_opts = {'extract_flat': True, 'quiet': True} # 'get_thumbnail': True}
+    meta_opts = {'extract_flat': True, 'quiet': True} 
 
     thumb_opts = {'forcethumbnail': True, 'simulate': True}
 
@@ -179,19 +180,20 @@ def grabDataYT(search_term, search=True, limit=10): # takes url, number of video
     data['urls'] = data['urls'][:limit]
     data['titles'] = data['titles'][:limit]
 
-    #todo faster way of getting thumbnails
+    #TODO: create faster way of getting thumbnails using beautifulsoup
 
     for u in data['urls']:
         with youtube_dl.YoutubeDL(meta_opts) as ydl:
             try:
                 d = ydl.extract_info(u, download=False)
-            except:
+
+            except: # youtube-dl playlists capture non-playable media such as paid videos. skip these items
                 print('skipping ' + u)
                 break
 
             data['thumb_urls'].append(d['thumbnail'])
 
-            if d['duration'] == 0.0:
+            if d['duration'] == 0.0: # live videos appear to give youtube-dl trouble
                 duration = 'LIVE'
             elif d['duration'] < 3600:
                 duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
@@ -231,12 +233,14 @@ def grabDataYT(search_term, search=True, limit=10): # takes url, number of video
     return data
 
 def dl_image(u, path, index):
+
     out = path + str(index) + '.jpg'
     urllib.request.urlretrieve(u, out)
     return out  
 
 
 def mktmpdir(directory):
+
     if not os.path.exists(directory):
         os.makedirs(directory)
 
