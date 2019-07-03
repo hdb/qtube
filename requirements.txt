@@ -1,6 +1,6 @@
-requests==2.18.4
-youtube_dl==2019.3.18
-python_mpv==0.3.9
-PyQt5==5.12.3
-beautifulsoup4==4.7.1
-mpv==0.1
+requests>=2.20.0
+youtube_dl>=2019.3.18
+python_mpv>=0.3.9
+PyQt5>=5.12.3
+beautifulsoup4>=4.7.1
+mpv>=0.1
