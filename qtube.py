@@ -1,0 +1,253 @@
+#! /usr/bin/python3
+
+import mpv
+import re
+import sys
+import time
+import urllib.request
+import requests
+from bs4 import BeautifulSoup
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+import youtube_dl
+import os
+import textwrap
+from pathlib import Path
+
+
+THUMB_SIZE = QSize(128,72)
+FLAGS = Qt.KeepAspectRatioByExpanding
+LIST_WIDTH = 400
+BACKGROUND_COLOR = 'white'
+FOREGROUND_COLOR = 'red'
+FONT = 'Courier'
+TEXT_LENGTH = 20
+NUM_RESULTS = 15
+
+
+class ImageLabel(QLabel):
+    def __init__(self, url, title, parent=None):
+        super(QLabel, self).__init__(parent)
+        self.url = url
+        self.title=title
+        self.setToolTip(title)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet("color: "+FOREGROUND_COLOR+";")
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+
+class Window(QWidget):
+    def __init__(self, val, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(QSize(1800, 800))
+        self.setWindowTitle("qtube")
+        self.exitshortcut1=QShortcut(QKeySequence("Ctrl+Q"), self)
+        self.exitshortcut2=QShortcut(QKeySequence("Ctrl+W"), self)
+        self.exitshortcut1.activated.connect(self.exit_seq)
+        self.exitshortcut2.activated.connect(self.exit_seq)
+        self.setStyleSheet("background-color: "+BACKGROUND_COLOR+";")
+        self.search=""
+        self.url=''
+
+
+        self.mygroupbox = QGroupBox('')
+        self.mygroupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+"; font-style: italic")
+        self.myform = QFormLayout()
+        labellist = []
+        combolist = []
+
+        self.mygroupbox.setLayout(self.myform)
+        self.scroll = QScrollArea()
+        self.scroll.setWidget(self.mygroupbox)
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("color: "+FOREGROUND_COLOR+";")
+
+
+        self.data=grabDataYT('https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', search=False)
+        self.populate()
+        groupbox = QGroupBox('Trending Stories')
+        groupbox.setLayout(self.myform)
+        groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
+        self.scroll.setWidget(groupbox)
+
+        
+
+        self.line = QLineEdit(self)
+        self.line.returnPressed.connect(self.clickMethod)
+        self.line.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+
+        self.container = QWidget()
+
+        self.container.setAttribute(Qt.WA_DontCreateNativeAncestors)
+        self.container.setAttribute(Qt.WA_NativeWindow)       
+        self.player = mpv.MPV(wid=str(int(self.container.winId())),
+                ytdl=True, 
+                input_default_bindings=True, 
+                input_vo_keyboard=True,
+                scripts='/home/hud/.config/mpv/scripts/live-filters.lua', # add a script here
+        )
+
+        self.player.register_key_binding('q', '')
+
+        sublayout = QVBoxLayout()
+        sublayout.addWidget(self.line)
+        sublayout.addWidget(self.scroll)
+        left = QWidget()
+        left.setLayout(sublayout)
+        left.setFixedWidth(LIST_WIDTH)
+
+        biglayout = QHBoxLayout(self)
+        biglayout.addWidget(left)
+        biglayout.addWidget(self.container)
+
+
+    def clickMethod(self):
+
+        self.search = self.line.text()
+        print('searching...')
+        search_term = self.search
+        data = grabDataYT(search_term, limit=NUM_RESULTS)
+        self.data = data
+        self.populate()
+        groupbox = QGroupBox('results for "' + self.search + '"')
+        groupbox.setLayout(self.myform)
+        groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
+        self.scroll.setWidget(groupbox)
+
+
+    def populate(self):
+
+        labellist = []
+        combolist = []
+        form = QFormLayout()
+
+        for i,img in enumerate(self.data['thumb_paths']):
+
+            if self.data['titles'][i] is not None:
+                title = '\n'.join(textwrap.wrap(self.data['titles'][i], TEXT_LENGTH)[:2])
+                if len(self.data['titles'][i]) > TEXT_LENGTH*2: 
+                    title = title + '...'
+            else:
+                title = '[TITLE MISSING]'
+
+            text =  title + '\n' + self.data['durations'][i] + ' | ' + self.data['dates'][i] + '\n' + self.data['views'][i] + ' views | rated ' + self.data['ratings'][i] 
+            labellist.append(QLabel(text))
+            imagelabel = ImageLabel(self.data['urls'][i], self.data['titles'][i])
+            pixmap = QPixmap(img)
+            pixmap = pixmap.scaled(THUMB_SIZE, FLAGS)
+            imagelabel.setPixmap(pixmap)
+            imagelabel.clicked.connect(self.on_video_clicked)
+            combolist.append(imagelabel) #
+            form.addRow(combolist[i], labellist[i])
+
+        self.myform = form
+        
+
+    def exit_seq(self):
+        sys.exit()
+
+    def on_video_clicked(self):
+
+        label = self.sender()
+        self.url = label.url
+        self.player.play(self.url)
+
+def grabDataYT(search_term, search=True, limit=10): # takes url, number of videos, login method, credentials (which can be a blank two item list i.e., c=['',''])
+    
+    data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 'durations': [], 'views': [], 'ratings': [], 'dates': []}
+
+    if search:
+        pl_url = 'https://www.youtube.com/results?search_query='+ search_term.replace(' ','+')
+    else:
+        pl_url=search_term
+
+    meta_opts = {'extract_flat': True, 'quiet': True} # 'get_thumbnail': True}
+
+    thumb_opts = {'forcethumbnail': True, 'simulate': True}
+
+    with youtube_dl.YoutubeDL(meta_opts) as ydl:
+        meta = ydl.extract_info(pl_url, download=False)
+
+    for e in meta['entries']:
+        data['urls'].append('https://www.youtube.com/watch?v=' + e.get('url'))
+        data['titles'].append(e.get('title'))
+    
+    data['urls'] = data['urls'][:limit]
+    data['titles'] = data['titles'][:limit]
+
+    #todo faster way of getting thumbnails
+
+    for u in data['urls']:
+        with youtube_dl.YoutubeDL(meta_opts) as ydl:
+            try:
+                d = ydl.extract_info(u, download=False)
+            except:
+                print('skipping ' + u)
+                break
+
+            data['thumb_urls'].append(d['thumbnail'])
+
+            if d['duration'] == 0.0:
+                duration = 'LIVE'
+            elif d['duration'] < 3600:
+                duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
+            else:
+                duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
+            #print(duration)
+            data['durations'].append(duration)
+
+            views = d['view_count']
+            if views > 1000000:
+                views_abbr = str(int(views/1000000))+'M'
+            elif views > 1000:
+                views_abbr = str(int(views/1000))+'K'
+            else: 
+                views_abbr = str(views)
+            data['views'].append(views_abbr)
+            try:
+                rating=str(int(100*(d['like_count']/(d['like_count']+d['dislike_count']))))+'%'
+            except:
+                rating='100%'
+            data['ratings'].append(rating)
+
+            upload_date = d['upload_date']
+            formatted_date = upload_date[4:6] + '-' + upload_date[-2:] + '-' + upload_date[:4]
+            data['dates'].append(formatted_date)
+
+        time.sleep(.05)
+    #sys.exit()
+    #print(data['thumb_urls'])
+    date = time.strftime("%d-%m-%Y--%H-%M-%S")
+    image_dir = '/tmp/qt/yt-thumbs/'+date+'/'
+    mktmpdir(image_dir)
+    for i, image in enumerate(data['thumb_urls']):
+        data['thumb_paths'].append(dl_image(image,image_dir, i))
+
+    #[print(len(data[d]), ' ', data[d] ) for d in data]
+    return data
+
+def dl_image(u, path, index):
+    out = path + str(index) + '.jpg'
+    urllib.request.urlretrieve(u, out)
+    return out  
+
+
+def mktmpdir(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
+if __name__ == '__main__':
+
+    import sys
+    import locale
+    app = QApplication(sys.argv)
+    locale.setlocale(locale.LC_NUMERIC, 'C')
+
+    window = Window(25)
+    window.show()
+    sys.exit(app.exec_())
