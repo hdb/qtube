@@ -169,7 +169,7 @@ class Window(QWidget):
                 ytdl=True, 
                 input_default_bindings=True, 
                 input_vo_keyboard=True,
-                scripts=str(Path.home())+'.config/mpv/scripts/live-filters.lua', # option to add custom script / currently no way of importing multiple scripts with MPV API
+                scripts=str(Path.home())+'/.config/mpv/scripts/live-filters.lua', # option to add custom script / currently no way of importing multiple scripts with MPV API
         )
 
         # TODO: allow exit key sequences while mpv window is active
