@@ -33,6 +33,19 @@ class ImageLabel(QLabel):
         super(QLabel, self).__init__(parent)
         self.url = url
         self.title=title
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet("color: "+FOREGROUND_COLOR+";")
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        self.clicked.emit()
+
+class DescriptionLabel(QLabel):
+    def __init__(self, url, title, parent=None):
+        super(QLabel, self).__init__(parent)
+        self.url = url
+        self.title=title
         self.setToolTip(title)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("color: "+FOREGROUND_COLOR+";")
@@ -135,7 +148,12 @@ class Window(QWidget):
                 title = '[TITLE MISSING]'
 
             text =  title + '\n' + self.data['durations'][i] + ' | ' + self.data['dates'][i] + '\n' + self.data['views'][i] + ' views | rated ' + self.data['ratings'][i] 
-            labellist.append(QLabel(text))
+            
+            descLabel = DescriptionLabel(self.data['urls'][i], self.data['titles'][i])
+            descLabel.setText(text)
+            descLabel.clicked.connect(self.on_video_clicked)
+            labellist.append(descLabel)
+            
             imagelabel = ImageLabel(self.data['urls'][i], self.data['titles'][i])
             pixmap = QPixmap(img)
             pixmap = pixmap.scaled(THUMB_SIZE, FLAGS)
