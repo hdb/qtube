@@ -31,29 +31,98 @@ NUM_RESULTS = 15
 class ImageLabel(QLabel):
     def __init__(self, url, title, parent=None):
         super(QLabel, self).__init__(parent)
+
         self.url = url
         self.title=title
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("color: "+FOREGROUND_COLOR+";")
 
+        # set button context menu policy
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.on_context_menu)
+
+        # create context menu
+        self.contextMenu = QMenu(self)
+        self.contextMenu.setCursor(Qt.PointingHandCursor)
+        self.contextMenu.addAction('Play', self.on_action_play)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction('Download', self.on_action_download)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction('Copy Url', self.on_action_copy)
+
     clicked = pyqtSignal()
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+
+    def on_context_menu(self):
+        self.contextMenu.exec(QCursor.pos()) 
+
+    def on_action_play(self):
         self.clicked.emit()
 
-class DescriptionLabel(QLabel):
+    def on_action_download(self):
+
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([self.url])
+
+    def on_action_copy(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard )
+        cb.setText(self.url, mode=cb.Clipboard)
+
+
+class DescriptionLabel(ImageLabel):
     def __init__(self, url, title, parent=None):
-        super(QLabel, self).__init__(parent)
+        super(ImageLabel, self).__init__(parent)
+
+        self.setToolTip(title) # class is same as ImageLabel but with ToolTip
+
         self.url = url
         self.title=title
-        self.setToolTip(title)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("color: "+FOREGROUND_COLOR+";")
 
-    clicked = pyqtSignal()
+        # set button context menu policy
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.on_context_menu)
 
-    def mousePressEvent(self, event):
-        self.clicked.emit()
+        # create context menu
+        self.contextMenu = QMenu(self)
+        self.contextMenu.setCursor(Qt.PointingHandCursor)
+        self.contextMenu.addAction('Play', self.on_action_play)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction('Download', self.on_action_download)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction('Copy Url', self.on_action_copy)
+
+
+# youtube-dl options for downloading video via context menu
+class MyLogger(object):
+
+    def debug(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        print(msg)
+
+
+def my_hook(d):
+    if d['status'] == 'finished':
+        print('Done downloading, now converting ...')
+    if d['status'] == 'downloading':
+        print(d['filename'], d['_percent_str'], d['_eta_str'], '\r', end='')
+
+
+ydl_opts = {
+    'logger': MyLogger(),
+    'progress_hooks': [my_hook],
+    'outtmpl': str(Path.home()) + '/Desktop/%(title)s.%(ext)s',
+}
 
 class Window(QWidget):
     def __init__(self, val, parent=None):
@@ -82,7 +151,7 @@ class Window(QWidget):
         self.scroll.setStyleSheet("color: "+FOREGROUND_COLOR+";")
 
 
-        self.data=grabDataYT('https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', search=False)
+        self.data=grabData('https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', search=False)
         self.populate()
         groupbox = QGroupBox('Trending Stories')
         groupbox.setLayout(self.myform)
@@ -123,7 +192,7 @@ class Window(QWidget):
         self.search = self.line.text()
         print('searching...')
         search_term = self.search
-        data = grabDataYT(search_term, limit=NUM_RESULTS)
+        data = grabData(search_term, limit=NUM_RESULTS)
         self.data = data
         self.populate()
         groupbox = QGroupBox('results for "' + self.search + '"')
@@ -174,7 +243,7 @@ class Window(QWidget):
         self.url = label.url
         self.player.play(self.url)
 
-def grabDataYT(search_term, search=True, limit=10):
+def grabData(search_term, search=True, limit=10):
     
     data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 'durations': [], 'views': [], 'ratings': [], 'dates': []}
 
@@ -207,7 +276,7 @@ def grabDataYT(search_term, search=True, limit=10):
 
             except: # youtube-dl playlists capture non-playable media such as paid videos. skip these items
                 print('skipping ' + u)
-                break
+                pass
 
             data['thumb_urls'].append(d['thumbnail'])
 
