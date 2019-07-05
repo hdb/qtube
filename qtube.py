@@ -53,22 +53,23 @@ class ImageLabel(QLabel):
         self.contextMenu.addSeparator()
         self.contextMenu.addAction('Copy Url', self.on_action_copy)
 
-    clicked = pyqtSignal()
+    video_clicked = pyqtSignal()
+
+    download_clicked = pyqtSignal()
+
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.clicked.emit()
+            self.video_clicked.emit()
 
     def on_context_menu(self):
         self.contextMenu.exec(QCursor.pos()) 
 
     def on_action_play(self):
-        self.clicked.emit()
+        self.video_clicked.emit()
 
     def on_action_download(self):
-
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([self.url])
+        self.download_clicked.emit()
 
     def on_action_copy(self):
         cb = QApplication.clipboard()
@@ -121,12 +122,6 @@ def my_hook(d):
         print(d['filename'], d['_percent_str'], d['_eta_str'], '\r', end='')
 
 
-ydl_opts = {
-    'logger': MyLogger(),
-    'progress_hooks': [my_hook],
-    'outtmpl': DOWNLOAD_LOCATION + '%(title)s.%(ext)s',
-}
-
 class Window(QWidget):
     def __init__(self, val, parent=None):
         super().__init__(parent)
@@ -140,6 +135,7 @@ class Window(QWidget):
         self.search=""
         self.url=''
         self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories']}
+        self.downloaded_videos=[]
 
 
         self.mygroupbox = QGroupBox('')
@@ -196,6 +192,16 @@ class Window(QWidget):
         for b in self.inactive_buttons:
             b.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
 
+        self.dl_progress = QLabel()
+        self.dl_progress.setText('           0 downloads           ')
+        self.dl_progress.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+
+        self.play_downloaded_button = QPushButton()
+        self.play_downloaded_button.setText('Play')
+        self.play_downloaded_button.clicked.connect(self.on_play_downloaded)
+        self.play_downloaded_button.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
+
+
         self.container = QWidget()
         self.container.setAttribute(Qt.WA_DontCreateNativeAncestors)
         self.container.setAttribute(Qt.WA_NativeWindow)       
@@ -222,10 +228,17 @@ class Window(QWidget):
         buttonrow = QWidget()
         buttonrow.setLayout(buttonrowlayout)
 
+        downloadrowlayout = QHBoxLayout()
+        downloadrowlayout.addWidget(self.dl_progress)
+        downloadrowlayout.addWidget(self.play_downloaded_button)
+        downloadrow = QWidget()
+        downloadrow.setLayout(downloadrowlayout)
+
         sublayout = QVBoxLayout()
         sublayout.addWidget(searchbar)
         sublayout.addWidget(buttonrow)
         sublayout.addWidget(self.scroll)
+        sublayout.addWidget(downloadrow)
         left = QWidget()
         left.setLayout(sublayout)
         left.setFixedWidth(LIST_WIDTH)
@@ -238,7 +251,7 @@ class Window(QWidget):
     def clickMethod(self):
 
         self.search = self.line.text()
-        print('searching "' + self.search + '...')
+        print('searching "' + self.search + '"...')
         search_term = self.search
         title_box = 'results for "' + search_term + '"'
 
@@ -274,14 +287,16 @@ class Window(QWidget):
             
             descLabel = DescriptionLabel(self.data['urls'][i], self.data['titles'][i])
             descLabel.setText(text)
-            descLabel.clicked.connect(self.on_video_clicked)
+            descLabel.video_clicked.connect(self.on_video_clicked)
+            descLabel.download_clicked.connect(self.on_download_clicked)
             labellist.append(descLabel)
             
             imagelabel = ImageLabel(self.data['urls'][i], self.data['titles'][i])
             pixmap = QPixmap(img)
             pixmap = pixmap.scaled(THUMB_SIZE, FLAGS)
             imagelabel.setPixmap(pixmap)
-            imagelabel.clicked.connect(self.on_video_clicked)
+            imagelabel.video_clicked.connect(self.on_video_clicked)
+            imagelabel.download_clicked.connect(self.on_download_clicked)
             combolist.append(imagelabel) #
             form.addRow(combolist[i], labellist[i])
 
@@ -296,6 +311,30 @@ class Window(QWidget):
         label = self.sender()
         self.url = label.url
         self.player.play(self.url)
+
+    def on_download_clicked(self):
+
+        label = self.sender()
+
+        title_long = label.title.replace(' ','-')
+        title_short = title_long[:20]
+
+        ydl_opts = {
+            'logger': MyLogger(),
+            'progress_hooks': [my_hook],
+            'outtmpl': DOWNLOAD_LOCATION + title_long
+        }
+
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([label.url])
+
+        self.dl_progress.setText('"' + title_short + '" downloaded.')
+        self.dl_progress.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+        self.play_downloaded_button.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+        self.play_downloaded_button.setCursor(Qt.PointingHandCursor)
+
+        vid_path = [DOWNLOAD_LOCATION + file for file in os.listdir(DOWNLOAD_LOCATION) if file.startswith(title_long)][0]
+        self.downloaded_videos.append(vid_path)
 
     def on_home_clicked(self):
 
@@ -341,6 +380,16 @@ class Window(QWidget):
         else:
             print('could not go back')
 
+    def on_play_downloaded(self):
+
+        if len(self.downloaded_videos) > 0:
+            last_downloaded = self.downloaded_videos[-1]
+            self.player.play(last_downloaded)
+
+        else:
+            print('no videos downloaded yet')
+
+
 def grabData(search_term, search=True, limit=NUM_RESULTS):
     
     if search:
@@ -355,8 +404,6 @@ def grabData(search_term, search=True, limit=NUM_RESULTS):
 
 
     meta_opts = {'extract_flat': True, 'quiet': True} 
-
-    thumb_opts = {'forcethumbnail': True, 'simulate': True}
 
     with youtube_dl.YoutubeDL(meta_opts) as ydl:
         meta = ydl.extract_info(pl_url, download=False)
