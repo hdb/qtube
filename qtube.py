@@ -195,7 +195,6 @@ class Window(QWidget):
 
         for b in self.inactive_buttons:
             b.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
-            #self.back_button.setCursor(Qt.ArrowCursor)
 
         self.container = QWidget()
         self.container.setAttribute(Qt.WA_DontCreateNativeAncestors)
@@ -213,7 +212,6 @@ class Window(QWidget):
         searchbarlayout = QHBoxLayout()
         searchbarlayout.addWidget(self.line)
         searchbarlayout.addWidget(self.search_button)
-        #searchbarlayout.addWidget(self.spinner)
         searchbar = QWidget()
         searchbar.setLayout(searchbarlayout)
 
@@ -411,15 +409,13 @@ def grabData(search_term, search=True, limit=NUM_RESULTS):
             data['dates'].append(formatted_date)
 
         time.sleep(.05)
-    #sys.exit()
-    #print(data['thumb_urls'])
+
     date = time.strftime("%d-%m-%Y--%H-%M-%S")
     image_dir = '/tmp/qt/yt-thumbs/'+date+'/'
     mktmpdir(image_dir)
     for i, image in enumerate(data['thumb_urls']):
         data['thumb_paths'].append(dl_image(image,image_dir, i))
 
-    #[print(len(data[d]), ' ', data[d] ) for d in data]
     return data
 
 def dl_image(u, path, index):
