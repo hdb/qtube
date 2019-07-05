@@ -23,9 +23,11 @@ FLAGS = Qt.KeepAspectRatioByExpanding
 LIST_WIDTH = 400
 BACKGROUND_COLOR = 'white'
 FOREGROUND_COLOR = 'red'
+INACTIVE_COLOR = 'grey'
 FONT = 'Courier'
 TEXT_LENGTH = 20
-NUM_RESULTS = 15
+NUM_RESULTS = 10
+HOME_URL = 'https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w'
 
 
 class ImageLabel(QLabel):
@@ -136,6 +138,7 @@ class Window(QWidget):
         self.setStyleSheet("background-color: "+BACKGROUND_COLOR+";")
         self.search=""
         self.url=''
+        self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories']}
 
 
         self.mygroupbox = QGroupBox('')
@@ -151,7 +154,7 @@ class Window(QWidget):
         self.scroll.setStyleSheet("color: "+FOREGROUND_COLOR+";")
 
 
-        self.data=grabData('https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', search=False)
+        self.data=grabData(HOME_URL, search=False)
         self.populate()
         groupbox = QGroupBox('Trending Stories')
         groupbox.setLayout(self.myform)
@@ -161,6 +164,37 @@ class Window(QWidget):
         self.line = QLineEdit(self)
         self.line.returnPressed.connect(self.clickMethod)
         self.line.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+
+        active_buttons = []
+        self.inactive_buttons = []
+
+        self.search_button = QPushButton()
+        self.search_button.setText('Search')
+        self.search_button.clicked.connect(self.clickMethod)
+        active_buttons.append(self.search_button)
+
+        self.home_button = QPushButton()
+        self.home_button.setText('Home')
+        self.home_button.clicked.connect(self.on_home_clicked)
+        self.inactive_buttons.append(self.home_button)
+
+        self.play_playlist_button = QPushButton()
+        self.play_playlist_button.setText('Play All')
+        self.play_playlist_button.clicked.connect(self.on_play_playlist_clicked)
+        active_buttons.append(self.play_playlist_button)
+
+        self.back_button = QPushButton()
+        self.back_button.setText('Back')
+        self.back_button.clicked.connect(self.on_back_clicked)
+        self.inactive_buttons.append(self.back_button)
+
+        for b in active_buttons:
+            b.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+            b.setCursor(Qt.PointingHandCursor)
+
+        for b in self.inactive_buttons:
+            b.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
+            #self.back_button.setCursor(Qt.ArrowCursor)
 
         self.container = QWidget()
         self.container.setAttribute(Qt.WA_DontCreateNativeAncestors)
@@ -175,8 +209,23 @@ class Window(QWidget):
         # TODO: allow exit key sequences while mpv window is active
         self.player.register_key_binding('q', '')
 
+        searchbarlayout = QHBoxLayout()
+        searchbarlayout.addWidget(self.line)
+        searchbarlayout.addWidget(self.search_button)
+        #searchbarlayout.addWidget(self.spinner)
+        searchbar = QWidget()
+        searchbar.setLayout(searchbarlayout)
+
+        buttonrowlayout = QHBoxLayout()
+        buttonrowlayout.addWidget(self.back_button)
+        buttonrowlayout.addWidget(self.home_button)
+        buttonrowlayout.addWidget(self.play_playlist_button)
+        buttonrow = QWidget()
+        buttonrow.setLayout(buttonrowlayout)
+
         sublayout = QVBoxLayout()
-        sublayout.addWidget(self.line)
+        sublayout.addWidget(searchbar)
+        sublayout.addWidget(buttonrow)
         sublayout.addWidget(self.scroll)
         left = QWidget()
         left.setLayout(sublayout)
@@ -190,12 +239,18 @@ class Window(QWidget):
     def clickMethod(self):
 
         self.search = self.line.text()
-        print('searching...')
+        print('searching "' + self.search + '...')
         search_term = self.search
-        data = grabData(search_term, limit=NUM_RESULTS)
-        self.data = data
+        title_box = 'results for "' + search_term + '"'
+
+        self.data = grabData(search_term)
+        self.history['title_boxes'].append(title_box)
+        self.history['urls'].append(self.data['playlist_url'])
+        for b in self.inactive_buttons:
+            b.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+            b.setCursor(Qt.PointingHandCursor)
         self.populate()
-        groupbox = QGroupBox('results for "' + self.search + '"')
+        groupbox = QGroupBox(title_box)
         groupbox.setLayout(self.myform)
         groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
         self.scroll.setWidget(groupbox)
@@ -243,15 +298,62 @@ class Window(QWidget):
         self.url = label.url
         self.player.play(self.url)
 
-def grabData(search_term, search=True, limit=10):
-    
-    data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 'durations': [], 'views': [], 'ratings': [], 'dates': []}
+    def on_home_clicked(self):
 
+        if HOME_URL not in self.history['urls'][-1]:
+            print('loading homepage...')
+            self.search = ''
+            self.data=grabData(HOME_URL, search=False)
+            self.history['title_boxes'].append('Trending Stories')
+            self.history['urls'].append(self.data['playlist_url'])
+            self.populate()
+            groupbox = QGroupBox('Trending Stories')
+            groupbox.setLayout(self.myform)
+            groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
+            self.scroll.setWidget(groupbox)
+
+            self.home_button.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
+            self.home_button.setCursor(Qt.ArrowCursor)
+
+        else:
+            print('already home')
+
+    def on_play_playlist_clicked(self):
+        print('Playlist')
+
+    def on_back_clicked(self):
+        if len(self.history['urls'])>1:
+            self.search = ''
+            self.history['urls'].pop(-1)
+            self.data = grabData(self.history['urls'][-1], search=False)
+            self.populate()
+            self.history['title_boxes'].pop(-1)
+            groupbox = QGroupBox(self.history['title_boxes'][-1])
+            groupbox.setLayout(self.myform)
+            groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
+            self.scroll.setWidget(groupbox)
+            print('returning to page ' + self.history['urls'][-1] + '...')
+
+            if len(self.history['urls']) == 1:
+                for b in self.inactive_buttons:
+                    b.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
+                    b.setCursor(Qt.ArrowCursor)
+
+        else:
+            print('could not go back')
+
+def grabData(search_term, search=True, limit=NUM_RESULTS):
+    
     if search:
         pl_url = 'https://www.youtube.com/results?search_query='+ search_term.replace(' ','+')
 
     else: # allow start page to be set by url rather than search term
         pl_url=search_term
+
+    data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 
+        'durations': [], 'views': [], 'ratings': [], 'dates': [], 
+        'playlist_url': pl_url}
+
 
     meta_opts = {'extract_flat': True, 'quiet': True} 
 
