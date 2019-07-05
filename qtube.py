@@ -28,6 +28,7 @@ FONT = 'Courier'
 TEXT_LENGTH = 20
 NUM_RESULTS = 10
 HOME_URL = 'https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w'
+DOWNLOAD_LOCATION = str(Path.home()) + '/Downloads/'
 
 
 class ImageLabel(QLabel):
@@ -123,7 +124,7 @@ def my_hook(d):
 ydl_opts = {
     'logger': MyLogger(),
     'progress_hooks': [my_hook],
-    'outtmpl': str(Path.home()) + '/Desktop/%(title)s.%(ext)s',
+    'outtmpl': DOWNLOAD_LOCATION + '%(title)s.%(ext)s',
 }
 
 class Window(QWidget):
