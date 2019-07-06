@@ -135,8 +135,7 @@ class Window(QWidget):
         self.search=""
         self.url=''
         self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories']}
-        self.downloaded_videos=[]
-
+        self.downloaded_videos = {'paths': [], 'short_titles': []}
 
         self.mygroupbox = QGroupBox('')
         self.mygroupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+"; font-style: italic")
@@ -192,13 +191,21 @@ class Window(QWidget):
         for b in self.inactive_buttons:
             b.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
 
-        self.dl_progress = QLabel()
-        self.dl_progress.setText('           0 downloads           ')
-        self.dl_progress.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+        self.download_label = QLabel()
+        self.download_label.setText('0 downloads')
+        self.download_label.setMaximumSize(QSize(100,20))
+        self.download_label.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+
+        self.download_selector = QComboBox()
+        self.download_selector.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+        self.download_selector.currentIndexChanged.connect(self.select_download)
+        
+        self.download_to_play = ''
 
         self.play_downloaded_button = QPushButton()
         self.play_downloaded_button.setText('Play')
         self.play_downloaded_button.clicked.connect(self.on_play_downloaded)
+        self.play_downloaded_button.setMaximumSize(QSize(50,20))
         self.play_downloaded_button.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
 
 
@@ -229,7 +236,8 @@ class Window(QWidget):
         buttonrow.setLayout(buttonrowlayout)
 
         downloadrowlayout = QHBoxLayout()
-        downloadrowlayout.addWidget(self.dl_progress)
+        downloadrowlayout.addWidget(self.download_label)
+        downloadrowlayout.addWidget(self.download_selector)
         downloadrowlayout.addWidget(self.play_downloaded_button)
         downloadrow = QWidget()
         downloadrow.setLayout(downloadrowlayout)
@@ -333,13 +341,21 @@ class Window(QWidget):
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             ydl.download([label.url])
 
-        self.dl_progress.setText('"' + title_short + '" downloaded.')
-        self.dl_progress.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+        vid_path = [DOWNLOAD_LOCATION + file for file in os.listdir(DOWNLOAD_LOCATION) if file.startswith(title_long)][0]
+
+        self.downloaded_videos['short_titles'].append(title_short)
+        self.downloaded_videos['paths'].append(vid_path)
+
+        self.download_label.setText(str(len(self.downloaded_videos['paths'])) + ' downloads')
+        self.download_label.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+
+        self.download_selector.insertItem(0,title_short, vid_path)
+        self.download_selector.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+        self.download_selector.setCurrentIndex(0)
+
         self.play_downloaded_button.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
         self.play_downloaded_button.setCursor(Qt.PointingHandCursor)
 
-        vid_path = [DOWNLOAD_LOCATION + file for file in os.listdir(DOWNLOAD_LOCATION) if file.startswith(title_long)][0]
-        self.downloaded_videos.append(vid_path)
 
 
     def on_home_clicked(self):
@@ -400,12 +416,17 @@ class Window(QWidget):
 
     def on_play_downloaded(self):
 
-        if len(self.downloaded_videos) > 0:
-            last_downloaded = self.downloaded_videos[-1]
-            self.player.play(last_downloaded)
+        if len(self.downloaded_videos['paths']) > 0:
+            self.player.play(self.download_to_play)
 
         else:
             print('no videos downloaded yet')
+
+
+    def select_download(self, index):
+
+        print('queued ' + self.download_selector.itemData(index))
+        self.download_to_play = self.download_selector.itemData(index)
 
 
 def grabData(search_term, search=True, limit=NUM_RESULTS):
