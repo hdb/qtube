@@ -253,7 +253,10 @@ class Window(QWidget):
         self.search = self.line.text()
         print('searching "' + self.search + '"...')
         search_term = self.search
-        title_box = 'results for "' + search_term + '"'
+        if len(search_term) > 25:
+            title_box = 'results: "' + search_term[:22] + '..."'
+        else:
+            title_box = 'results: "' + search_term + '"'
 
         self.data = grabData(search_term)
         self.history['title_boxes'].append(title_box)
