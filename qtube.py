@@ -306,11 +306,13 @@ class Window(QWidget):
     def exit_seq(self):
         sys.exit()
 
+
     def on_video_clicked(self):
 
         label = self.sender()
         self.url = label.url
         self.player.play(self.url)
+
 
     def on_download_clicked(self):
 
@@ -336,6 +338,7 @@ class Window(QWidget):
         vid_path = [DOWNLOAD_LOCATION + file for file in os.listdir(DOWNLOAD_LOCATION) if file.startswith(title_long)][0]
         self.downloaded_videos.append(vid_path)
 
+
     def on_home_clicked(self):
 
         if HOME_URL not in self.history['urls'][-1]:
@@ -356,8 +359,14 @@ class Window(QWidget):
         else:
             print('already home')
 
+
     def on_play_playlist_clicked(self):
-        print('Playlist')
+
+        self.url = self.history['urls'][-1]
+        self.player.play(self.url)
+
+        #TODO: add mpv options to limit playlist items to number of search results
+
 
     def on_back_clicked(self):
         if len(self.history['urls'])>1:
@@ -380,6 +389,7 @@ class Window(QWidget):
         else:
             print('could not go back')
 
+
     def on_play_downloaded(self):
 
         if len(self.downloaded_videos) > 0:
@@ -391,6 +401,8 @@ class Window(QWidget):
 
 
 def grabData(search_term, search=True, limit=NUM_RESULTS):
+
+    #TODO: fetch next page of results
     
     if search:
         pl_url = 'https://www.youtube.com/results?search_query='+ search_term.replace(' ','+')
