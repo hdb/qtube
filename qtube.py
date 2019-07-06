@@ -385,7 +385,12 @@ class Window(QWidget):
                 for b in self.inactive_buttons:
                     b.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
                     b.setCursor(Qt.ArrowCursor)
-
+            elif HOME_URL not in self.history['urls'][-1]:
+                self.home_button.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+                self.home_button.setCursor(Qt.PointingHandCursor)
+            else:
+                self.home_button.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")                
+                self.home_button.setCursor(Qt.ArrowCursor)
         else:
             print('could not go back')
 
