@@ -132,9 +132,9 @@ class Window(QWidget):
         self.exitshortcut1.activated.connect(self.exit_seq)
         self.exitshortcut2.activated.connect(self.exit_seq)
         self.setStyleSheet("background-color: "+BACKGROUND_COLOR+";")
+
         self.search=""
         self.url=''
-        self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories']}
         self.downloaded_videos = {'paths': [], 'short_titles': []}
 
         self.mygroupbox = QGroupBox('')
@@ -151,6 +151,8 @@ class Window(QWidget):
 
 
         self.data=grabData(HOME_URL, search=False)
+        self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories'], 'data': [self.data]}
+
         self.populate()
         groupbox = QGroupBox('Trending Stories')
         groupbox.setLayout(self.myform)
@@ -267,6 +269,7 @@ class Window(QWidget):
             title_box = 'results: "' + search_term + '"'
 
         self.data = grabData(search_term)
+        self.history['data'].append(self.data)
         self.history['title_boxes'].append(title_box)
         self.history['urls'].append(self.data['playlist_url'])
         for b in self.inactive_buttons:
@@ -363,7 +366,8 @@ class Window(QWidget):
         if HOME_URL not in self.history['urls'][-1]:
             print('loading homepage...')
             self.search = ''
-            self.data=grabData(HOME_URL, search=False)
+            self.data=self.history['data'][0]
+            self.history['data'].append(self.data)
             self.history['title_boxes'].append('Trending Stories')
             self.history['urls'].append(self.data['playlist_url'])
             self.populate()
@@ -391,7 +395,8 @@ class Window(QWidget):
         if len(self.history['urls'])>1:
             self.search = ''
             self.history['urls'].pop(-1)
-            self.data = grabData(self.history['urls'][-1], search=False)
+            self.history['data'].pop(-1)
+            self.data = self.history['data'][-1]
             self.populate()
             self.history['title_boxes'].pop(-1)
             groupbox = QGroupBox(self.history['title_boxes'][-1])
