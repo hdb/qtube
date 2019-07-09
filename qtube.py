@@ -12,6 +12,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import youtube_dl
 import os
+import math
 import textwrap
 from pathlib import Path
 
@@ -102,6 +103,29 @@ class DescriptionLabel(ImageLabel):
         self.contextMenu.addAction('Copy Url', self.on_action_copy)
 
 
+class PageLabel(QLabel):
+    def __init__(self, page, active, parent=None):
+        super(QLabel, self).__init__(parent)
+
+        self.page = page
+        self.setText(str(self.page))
+
+        if active:
+            self.active = True
+            self.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+"; font: bold")
+            self.setCursor(Qt.PointingHandCursor)
+            
+        else:
+            self.active = False
+            self.setStyleSheet("color: "+INACTIVE_COLOR+"; font-family: "+FONT+"; font: bold")
+            
+    page_clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.active:
+            self.page_clicked.emit()
+
+
 # youtube-dl options for downloading video via context menu
 class MyLogger(object):
 
@@ -151,7 +175,7 @@ class Window(QWidget):
 
 
         self.data=grabData(HOME_URL, search=False)
-        self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories'], 'data': [self.data]}
+        self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories'], 'data': [self.data], 'page_numbers': [1],}
 
         self.populate()
         groupbox = QGroupBox('Trending Stories')
@@ -272,6 +296,7 @@ class Window(QWidget):
         self.history['data'].append(self.data)
         self.history['title_boxes'].append(title_box)
         self.history['urls'].append(self.data['playlist_url'])
+        self.history['page_numbers'].append(1)
         for b in self.inactive_buttons:
             b.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
             b.setCursor(Qt.PointingHandCursor)
@@ -313,6 +338,39 @@ class Window(QWidget):
             imagelabel.download_clicked.connect(self.on_download_clicked)
             combolist.append(imagelabel) #
             form.addRow(combolist[i], labellist[i])
+
+        number_of_pages = math.ceil(self.data['total_videos']/NUM_RESULTS)
+
+        if number_of_pages > 1:
+
+            current_page = self.history['page_numbers'][-1]
+            pages = []
+
+            if current_page <= 3 or number_of_pages <= 5:
+                page_range=['<']
+                page_range.extend([i for i in range(1,number_of_pages+1)])
+                page_range.append('>')
+
+            else:
+                page_range = ['<',1]
+                if number_of_pages - current_page < 3: 
+                    page_range.extend([i for i in range(number_of_pages-3, number_of_pages+1)])
+                else:
+                    page_range.extend([i+current_page-1 for i in range(4)])
+                page_range.append('>')
+
+            for i in page_range:
+                active = (i!=current_page) and not (i=='<' and current_page==1) and not (i=='>' and current_page==number_of_pages)
+                page = PageLabel(i, active)
+                page.page_clicked.connect(self.get_next_page)
+                pages.append(page)
+
+            layout = QHBoxLayout()
+            for p in pages:
+                layout.addWidget(p)
+            page_selector = QWidget()
+            page_selector.setLayout(layout)
+            form.addRow(QLabel('Pages: '), page_selector)
 
         self.myform = form
         
@@ -363,13 +421,14 @@ class Window(QWidget):
 
     def on_home_clicked(self):
 
-        if HOME_URL not in self.history['urls'][-1]:
+        if not (HOME_URL in self.history['urls'][-1] and self.history['page_numbers'][-1] == 1):
             print('loading homepage...')
             self.search = ''
             self.data=self.history['data'][0]
             self.history['data'].append(self.data)
             self.history['title_boxes'].append('Trending Stories')
             self.history['urls'].append(self.data['playlist_url'])
+            self.history['page_numbers'].append(1)
             self.populate()
             groupbox = QGroupBox('Trending Stories')
             groupbox.setLayout(self.myform)
@@ -395,6 +454,7 @@ class Window(QWidget):
         if len(self.history['urls'])>1:
             self.search = ''
             self.history['urls'].pop(-1)
+            self.history['page_numbers'].pop(-1)
             self.history['data'].pop(-1)
             self.data = self.history['data'][-1]
             self.populate()
@@ -434,7 +494,47 @@ class Window(QWidget):
         self.download_to_play = self.download_selector.itemData(index)
 
 
-def grabData(search_term, search=True, limit=NUM_RESULTS):
+    def get_next_page(self):
+        search_term = self.search
+
+        try:
+            sender = self.sender()
+            if sender.page == '<':
+                next_page_number = self.history['page_numbers'][-1] - 1
+            elif sender.page == '>':
+                next_page_number = self.history['page_numbers'][-1] + 1
+            else:
+                next_page_number = sender.page
+
+        except:
+            next_page_number = self.history['page_numbers'][-1] + 1
+
+        self.history['page_numbers'].append(next_page_number)
+
+        url = self.history['urls'][-1]
+        self.history['urls'].append(url)
+        title_box = re.sub(r' page \d+$', '', self.history['title_boxes'][-1])
+        if next_page_number > 1:
+            title_box = title_box[:29] + ' page ' + str(next_page_number)
+
+        data_limits = [NUM_RESULTS * (next_page_number - 1), NUM_RESULTS * next_page_number ]
+        self.data = grabData(url, search=False, limit=data_limits)
+        self.history['data'].append(self.data)
+
+        for b in self.inactive_buttons:
+            b.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+            b.setCursor(Qt.PointingHandCursor)
+
+        self.populate()
+
+        self.history['title_boxes'].append(title_box)
+        groupbox = QGroupBox(title_box)
+        groupbox.setLayout(self.myform)
+        groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
+        self.scroll.setWidget(groupbox)
+
+
+def grabData(search_term, search=True, limit=[0,NUM_RESULTS]):
 
     #TODO: fetch next page of results
     
@@ -446,7 +546,7 @@ def grabData(search_term, search=True, limit=NUM_RESULTS):
 
     data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 
         'durations': [], 'views': [], 'ratings': [], 'dates': [], 
-        'playlist_url': pl_url}
+        'playlist_url': pl_url, 'total_videos': 0}
 
 
     meta_opts = {'extract_flat': True, 'quiet': True} 
@@ -457,9 +557,10 @@ def grabData(search_term, search=True, limit=NUM_RESULTS):
     for e in meta['entries']:
         data['urls'].append('https://www.youtube.com/watch?v=' + e.get('url'))
         data['titles'].append(e.get('title'))
-    
-    data['urls'] = data['urls'][:limit]
-    data['titles'] = data['titles'][:limit]
+
+    data['total_videos'] = len(meta['entries'])
+    data['urls'] = data['urls'][limit[0]:limit[1]]
+    data['titles'] = data['titles'][limit[0]:limit[1]]
 
     #TODO: create faster way of getting thumbnails using beautifulsoup
 
