@@ -75,10 +75,11 @@ class Worker(QObject):
             meta = ydl.extract_info(pl_url, download=False)
 
         for e in meta['entries']:
+            title = e.get('title')
             data['urls'].append('https://www.youtube.com/watch?v=' + e.get('url'))
-            data['titles'].append(e.get('title'))
+            data['titles'].append(title)
 
-        data['total_videos'] = len(meta['entries'])
+        data['total_videos'] = len(data['urls'])
         data['urls'] = data['urls'][self.limit[0]:self.limit[1]]
         data['titles'] = data['titles'][self.limit[0]:self.limit[1]]
 
@@ -100,7 +101,7 @@ class Worker(QObject):
                 elif d['duration'] < 3600:
                     duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
                 else:
-                    duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
+                    duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-(int(d['duration']/3600))*3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
                 #print(duration)
                 data['durations'].append(duration)
 
