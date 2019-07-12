@@ -19,10 +19,21 @@
 git clone git@github.com:hdbhdb/qtube.git
 cd qtube
 pip install requirements.txt
+```
+
+Then to run qtube:
+
+```
 python qtube.py
 ```
 
-## Usage & Features
+## Features & Usage
+
+- watch and browse YouTube without browser and without ads
+- play videos natively within application
+- download videos
+- queue search results as a playlist
+- almost anything you can do with mpv
 
 qtube aims to be highly modifiable. Configuration settings are not currently possible within the application, but you can start [here](https://github.com/hdbhdb/qtube/blob/2753b575e8bc1742f25c979893b33a73b3225417/qtube.py#L19-L31) for modifying basic settings with code. 
 
