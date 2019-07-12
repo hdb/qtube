@@ -16,21 +16,65 @@ import math
 import textwrap
 from pathlib import Path
 from waitingspinnerwidget import QtWaitingSpinner
+import argparse
 
 
-# CUSTOMIZABLE SETTINGS
+parser = argparse.ArgumentParser(
+    prog="qtube",
+    description="",
+    )
+
+parser.add_argument('-u', '--home-url', nargs='?', help="playlist url to fetch on opening", metavar='')
+parser.add_argument('-c', '--color', nargs='*', default=[], help="specify foreground color, background color, inactive color", metavar='')
+parser.add_argument('-d', '--download-to', nargs='?', help="directory to download videos to", metavar='')
+parser.add_argument('-s', '--search', nargs='*', help="skip loading home page and search", metavar='')
+parser.add_argument('-n', '--number', nargs='?', type=int, help="number of results to load per page", metavar='')
+
+args = parser.parse_args()
 
 THUMB_SIZE = QSize(128,72)
 FLAGS = Qt.KeepAspectRatioByExpanding
 LIST_WIDTH = 400
-BACKGROUND_COLOR = 'white'
-FOREGROUND_COLOR = 'red'
-INACTIVE_COLOR = 'grey'
 FONT = 'Courier'
 TEXT_LENGTH = 20
-NUM_RESULTS = 10
-HOME_URL = 'https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w'
-DOWNLOAD_LOCATION = str(Path.home()) + '/Downloads/'
+
+if len(args.color) == 0: 
+    colors = ['red', 'white', 'grey']
+elif len(args.color) == 1: 
+    colors = [args.color[0], 'white', 'grey']
+elif len(args.color) == 2: 
+    colors = [args.color[0], args.color[1], 'grey']
+else: 
+    colors = args.color[:3]
+
+FOREGROUND_COLOR = colors[0]
+BACKGROUND_COLOR = colors[1]
+INACTIVE_COLOR = colors[2]
+
+if args.number is None:
+    NUM_RESULTS = 10
+else:
+    NUM_RESULTS = args.number
+
+if args.search is None:
+    if args.home_url is None:
+        HOME_URL = 'https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w'
+    else:
+        HOME_URL = args.home_url
+else:
+    HOME_URL = 'https://www.youtube.com/results?search_query=' + '+'.join(args.search)
+
+if args.download_to is None:
+    DOWNLOAD_LOCATION = str(Path.home()) + '/Downloads/'
+elif not os.path.isdir(args.download_to):
+        print(args.download_to, 'is not a directory. exiting...')
+        sys.exit()
+else:
+    DOWNLOAD_LOCATION = args.download_to
+    if not os.path.isabs(DOWNLOAD_LOCATION):
+        DOWNLOAD_LOCATION = os.getcwd() + '/' + DOWNLOAD_LOCATION
+    if not DOWNLOAD_LOCATION.endswith('/'):
+        DOWNLOAD_LOCATION = DOWNLOAD_LOCATION + '/'
 
 def trap_exc_during_debug(*args):
     # when app raises uncaught exception, print info
@@ -66,7 +110,7 @@ class Worker(QObject):
 
         data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 
             'durations': [], 'views': [], 'ratings': [], 'dates': [], 
-            'playlist_url': pl_url, 'total_videos': 0}
+            'playlist_url': pl_url, 'total_videos': 0, 'page_title': ''}
 
 
         meta_opts = {'extract_flat': True, 'quiet': True} 
@@ -80,6 +124,7 @@ class Worker(QObject):
             data['titles'].append(title)
 
         data['total_videos'] = len(data['urls'])
+        data['page_title'] = meta['title']
         data['urls'] = data['urls'][self.limit[0]:self.limit[1]]
         data['titles'] = data['titles'][self.limit[0]:self.limit[1]]
 
@@ -315,7 +360,7 @@ class Window(QWidget):
         self.spinner.setLineWidth(4)
         self.spinner.setInnerRadius(4)
         self.spinner.setRevolutionsPerSecond(1.5)
-        self.spinner.setColor(QColor(255, 0, 0))
+        self.spinner.setColor(QColor(FOREGROUND_COLOR))
 
         # multi-threading
         QThread.currentThread().setObjectName('main')  # threads can be named, useful for log output
@@ -490,7 +535,7 @@ class Window(QWidget):
         search_term = self.search
 
         if len(self.history['data']) == 0:
-            title_box = 'Trending Stories'
+            title_box = data['page_title']
         elif len(search_term) > 25:
             title_box = 'results: "' + search_term[:22] + '..."'
         else:
@@ -641,11 +686,11 @@ class Window(QWidget):
             self.search = ''
             self.data=self.history['data'][0]
             self.history['data'].append(self.data)
-            self.history['title_boxes'].append('Trending Stories')
+            self.history['title_boxes'].append(self.data['page_title'])
             self.history['urls'].append(self.data['playlist_url'])
             self.history['page_numbers'].append(1)
             self.populate()
-            groupbox = QGroupBox('Trending Stories')
+            groupbox = QGroupBox(self.data['page_title'])
             groupbox.setLayout(self.myform)
             groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
             self.scroll.setWidget(groupbox)

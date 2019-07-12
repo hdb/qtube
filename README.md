@@ -35,7 +35,26 @@ python qtube.py
 - queue search results as a playlist
 - almost anything you can do with mpv
 
-qtube aims to be highly modifiable. Configuration settings are not currently possible within the application, but you can start [here](https://github.com/hdbhdb/qtube/blob/2753b575e8bc1742f25c979893b33a73b3225417/qtube.py#L19-L31) for modifying basic settings with code. 
+qtube aims to be highly modifiable. Configuration settings are not currently possible within the application, but you use command line options to adjust some simple parameters:
+
+```
+qtube [-h] [-u ] [-c [[...]]] [-d ] [-s [[...]]] [-n ]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -u [], --home-url []  playlist url to fetch on opening
+  -c [ [ ...]], --color [ [ ...]]
+                        specify foreground color, background color, inactive
+                        color
+  -d [], --download-to []
+                        directory to download videos to
+  -s [ [ ...]], --search [ [ ...]]
+                        skip loading home page and search
+  -n [], --number []    number of results to load per page
+
+```
+
+
 
 Click videos to play natively in player. Right-click for further options (i.e., to download videos). Downloaded videos can be played natively as well. 
 
