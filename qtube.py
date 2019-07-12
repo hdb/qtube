@@ -279,10 +279,15 @@ class Window(QWidget):
         super().__init__(parent)
         self.setMinimumSize(QSize(1800, 800))
         self.setWindowTitle("qtube")
-        self.exitshortcut1=QShortcut(QKeySequence("Ctrl+Q"), self)
-        self.exitshortcut2=QShortcut(QKeySequence("Ctrl+W"), self)
-        self.exitshortcut1.activated.connect(self.exit_seq)
-        self.exitshortcut2.activated.connect(self.exit_seq)
+
+        app_exit_shortcuts = ["Ctrl+Q", "Ctrl+W"]
+        for sc in app_exit_shortcuts:
+            exitshortcut=QShortcut(QKeySequence(sc), self)
+            exitshortcut.activated.connect(self.exit_seq)
+        
+        backshortcut = QShortcut(QKeySequence('Alt+Left'), self)
+        backshortcut.activated.connect(self.on_back_clicked)
+
         self.setStyleSheet("background-color: "+BACKGROUND_COLOR+";")
 
         self.mygroupbox = QGroupBox('')
@@ -376,11 +381,17 @@ class Window(QWidget):
                 ytdl=True, 
                 input_default_bindings=True, 
                 input_vo_keyboard=True,
+                keep_open=True,
                 scripts=str(Path.home())+'/.config/mpv/scripts/live-filters.lua', # option to add custom script / currently no way of importing multiple scripts with MPV API
         )
 
-        # TODO: allow exit key sequences while mpv window is active; allow fullscreen mode
-        self.player.register_key_binding('q', '')
+        player_exit_shortcuts = ['q','ctrl+q','ctrl+w']
+        for sc in player_exit_shortcuts:
+            self.player.register_key_binding(sc, self.exit_seq)
+
+        self.player.register_key_binding('f', self.fullscreen)
+        self.player.register_key_binding('esc', self.fullscreen_off)
+        self.isFullScreen = False
 
         searchbarlayout = QHBoxLayout()
         searchbarlayout.addWidget(self.line)
@@ -408,12 +419,12 @@ class Window(QWidget):
         sublayout.addWidget(buttonrow)
         sublayout.addWidget(self.scroll)
         sublayout.addWidget(downloadrow)
-        left = QWidget()
-        left.setLayout(sublayout)
-        left.setFixedWidth(LIST_WIDTH)
+        self.left = QWidget()
+        self.left.setLayout(sublayout)
+        self.left.setFixedWidth(LIST_WIDTH)
 
         biglayout = QHBoxLayout(self)
-        biglayout.addWidget(left)
+        biglayout.addWidget(self.left)
         biglayout.addWidget(self.container)
 
         # load home page data
@@ -433,6 +444,20 @@ class Window(QWidget):
         thread.start()
         self.__threads.append((thread, worker)) 
 
+
+    def fullscreen(self,blank,blank2):
+        if not self.isFullScreen:
+            self.left.setFixedWidth(0)
+            self.showFullScreen()
+            self.isFullScreen = True
+            time.sleep(.5)
+
+    def fullscreen_off(self,blank,blank2):
+        if self.isFullScreen:
+            self.showNormal()
+            self.left.setFixedWidth(LIST_WIDTH)
+            self.isFullScreen = False
+            time.sleep(.5)
 
 
     def clickMethod(self):
@@ -557,8 +582,8 @@ class Window(QWidget):
         self.myform = form
         
 
-    def exit_seq(self):
-        sys.exit()
+    def exit_seq(self,blank=None,blank2=None):
+        app.quit()
 
 
     def on_video_clicked(self):
