@@ -15,6 +15,7 @@ import os
 import math
 import textwrap
 from pathlib import Path
+from waitingspinnerwidget import QtWaitingSpinner
 
 
 # CUSTOMIZABLE SETTINGS
@@ -30,6 +31,136 @@ TEXT_LENGTH = 20
 NUM_RESULTS = 10
 HOME_URL = 'https://www.youtube.com/playlist?list=PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w'
 DOWNLOAD_LOCATION = str(Path.home()) + '/Downloads/'
+
+def trap_exc_during_debug(*args):
+    # when app raises uncaught exception, print info
+    print(args)
+
+# install exception hook: without this, uncaught exception would cause application to exit
+sys.excepthook = trap_exc_during_debug
+
+
+class Worker(QObject):
+        
+    sig_msg = pyqtSignal(str)  # message to be shown to user
+    sig_data = pyqtSignal(dict)
+
+    def __init__(self, id, search_term, search=True, limit=[0,NUM_RESULTS], label=None):
+        super().__init__()
+        self.__id = id
+        self.__abort = False
+        self.search_term = search_term
+        self.search = search
+        self.limit = limit
+        self.label = label
+
+
+    @pyqtSlot()
+    def grabData(self):
+        
+        if self.search:
+            pl_url = 'https://www.youtube.com/results?search_query=' + self.search_term.replace(' ','+')
+
+        else: # allow start page to be set by url rather than search term
+            pl_url = self.search_term
+
+        data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 
+            'durations': [], 'views': [], 'ratings': [], 'dates': [], 
+            'playlist_url': pl_url, 'total_videos': 0}
+
+
+        meta_opts = {'extract_flat': True, 'quiet': True} 
+
+        with youtube_dl.YoutubeDL(meta_opts) as ydl:
+            meta = ydl.extract_info(pl_url, download=False)
+
+        for e in meta['entries']:
+            data['urls'].append('https://www.youtube.com/watch?v=' + e.get('url'))
+            data['titles'].append(e.get('title'))
+
+        data['total_videos'] = len(meta['entries'])
+        data['urls'] = data['urls'][self.limit[0]:self.limit[1]]
+        data['titles'] = data['titles'][self.limit[0]:self.limit[1]]
+
+        #TODO: create faster way of getting thumbnails using beautifulsoup
+
+        for u in data['urls']:
+            with youtube_dl.YoutubeDL(meta_opts) as ydl:
+                try:
+                    d = ydl.extract_info(u, download=False)
+
+                except: # youtube-dl playlists capture non-playable media such as paid videos. skip these items
+                    print('skipping ' + u)
+                    pass
+
+                data['thumb_urls'].append(d['thumbnail'])
+
+                if d['duration'] == 0.0: # live videos appear to give youtube-dl trouble
+                    duration = 'LIVE'
+                elif d['duration'] < 3600:
+                    duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
+                else:
+                    duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
+                #print(duration)
+                data['durations'].append(duration)
+
+                views = d['view_count']
+                if views > 1000000:
+                    views_abbr = str(int(views/1000000))+'M'
+                elif views > 1000:
+                    views_abbr = str(int(views/1000))+'K'
+                else: 
+                    views_abbr = str(views)
+                data['views'].append(views_abbr)
+                try:
+                    rating=str(int(100*(d['like_count']/(d['like_count']+d['dislike_count']))))+'%'
+                except:
+                    rating='100%'
+                data['ratings'].append(rating)
+
+                upload_date = d['upload_date']
+                formatted_date = upload_date[4:6] + '-' + upload_date[-2:] + '-' + upload_date[:4]
+                data['dates'].append(formatted_date)
+
+            time.sleep(.05)
+
+        date = time.strftime("%d-%m-%Y--%H-%M-%S")
+        image_dir = '/tmp/qt/yt-thumbs/'+date+'/'
+        mktmpdir(image_dir)
+        for i, image in enumerate(data['thumb_urls']):
+            data['thumb_paths'].append(dl_image(image,image_dir, i))
+
+        self.sig_data.emit(data)
+
+    def download(self):
+
+        title_long = self.__id.replace(' ','-')
+
+        #TODO: fix issue with videos containing single quotes at beginning
+
+        self.label.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
+
+        ydl_opts = {
+            'logger': MyLogger(),
+            'progress_hooks': [self.my_hook],
+            'outtmpl': DOWNLOAD_LOCATION + title_long
+        }
+
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([self.search_term])
+
+        self.sig_msg.emit(title_long)
+
+    def my_hook(self, d):
+        if d['status'] == 'finished':
+            self.label.setText('Converting...')
+        if d['status'] == 'downloading':
+            self.label.setText(d['_percent_str'] + ' ' + d['_eta_str'])
+
+
+    def abort(self):
+        self.sig_msg.emit('Worker {} notified to abort'.format(self.__id))
+        self.__abort = True
 
 
 class ImageLabel(QLabel):
@@ -126,7 +257,7 @@ class PageLabel(QLabel):
             self.page_clicked.emit()
 
 
-# youtube-dl options for downloading video via context menu
+# youtube-dl logging
 class MyLogger(object):
 
     def debug(self, msg):
@@ -139,14 +270,10 @@ class MyLogger(object):
         print(msg)
 
 
-def my_hook(d):
-    if d['status'] == 'finished':
-        print('Done downloading, now converting ...')
-    if d['status'] == 'downloading':
-        print(d['filename'], d['_percent_str'], d['_eta_str'], '\r', end='')
-
-
 class Window(QWidget):
+
+    sig_abort_workers = pyqtSignal()
+
     def __init__(self, val, parent=None):
         super().__init__(parent)
         self.setMinimumSize(QSize(1800, 800))
@@ -156,10 +283,6 @@ class Window(QWidget):
         self.exitshortcut1.activated.connect(self.exit_seq)
         self.exitshortcut2.activated.connect(self.exit_seq)
         self.setStyleSheet("background-color: "+BACKGROUND_COLOR+";")
-
-        self.search=""
-        self.url=''
-        self.downloaded_videos = {'paths': [], 'short_titles': []}
 
         self.mygroupbox = QGroupBox('')
         self.mygroupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+"; font-style: italic")
@@ -173,20 +296,30 @@ class Window(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setStyleSheet("color: "+FOREGROUND_COLOR+";")
 
+        self.history={'urls': [], 'title_boxes': [], 'data': [], 'page_numbers': []}
+        self.downloaded_videos = {'paths': [], 'short_titles': []}
+        self.search = ''
 
-        self.data=grabData(HOME_URL, search=False)
-        self.history={'urls': [HOME_URL], 'title_boxes': ['Trending Stories'], 'data': [self.data], 'page_numbers': [1],}
+        self.spinner = QtWaitingSpinner(self, False)
+        self.spinner.setRoundness(70.0)
+        self.spinner.setMinimumTrailOpacity(15.0)
+        self.spinner.setTrailFadePercentage(70.0)
+        self.spinner.setNumberOfLines(10)
+        self.spinner.setLineLength(10)
+        self.spinner.setLineWidth(4)
+        self.spinner.setInnerRadius(4)
+        self.spinner.setRevolutionsPerSecond(1.5)
+        self.spinner.setColor(QColor(255, 0, 0))
 
-        self.populate()
-        groupbox = QGroupBox('Trending Stories')
-        groupbox.setLayout(self.myform)
-        groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
-        self.scroll.setWidget(groupbox)
+        # multi-threading
+        QThread.currentThread().setObjectName('main')  # threads can be named, useful for log output
+        self.__workers_done = []
+        self.__threads = []
 
         self.line = QLineEdit(self)
         self.line.returnPressed.connect(self.clickMethod)
         self.line.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
-
+        
         active_buttons = []
         self.inactive_buttons = []
 
@@ -219,13 +352,13 @@ class Window(QWidget):
 
         self.download_label = QLabel()
         self.download_label.setText('0 downloads')
-        self.download_label.setMaximumSize(QSize(100,20))
+        self.download_label.setMaximumSize(QSize(110,20))
         self.download_label.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
 
         self.download_selector = QComboBox()
         self.download_selector.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; font-family: "+FONT+";")
         self.download_selector.currentIndexChanged.connect(self.select_download)
-        
+
         self.download_to_play = ''
 
         self.play_downloaded_button = QPushButton()
@@ -245,12 +378,13 @@ class Window(QWidget):
                 scripts=str(Path.home())+'/.config/mpv/scripts/live-filters.lua', # option to add custom script / currently no way of importing multiple scripts with MPV API
         )
 
-        # TODO: allow exit key sequences while mpv window is active
+        # TODO: allow exit key sequences while mpv window is active; allow fullscreen mode
         self.player.register_key_binding('q', '')
 
         searchbarlayout = QHBoxLayout()
         searchbarlayout.addWidget(self.line)
         searchbarlayout.addWidget(self.search_button)
+        searchbarlayout.addWidget(self.spinner)
         searchbar = QWidget()
         searchbar.setLayout(searchbarlayout)
 
@@ -281,30 +415,77 @@ class Window(QWidget):
         biglayout.addWidget(left)
         biglayout.addWidget(self.container)
 
+        # load home page data
+        self.spinner.start()
+
+        idx = 'Home'
+        worker = Worker(idx, HOME_URL, search=False)
+        thread = QThread()
+        thread.setObjectName('thread_' + idx)
+        worker.moveToThread(thread)
+
+        worker.sig_data.connect(self.on_click_data_received)
+
+        self.sig_abort_workers.connect(worker.abort)
+
+        thread.started.connect(worker.grabData)
+        thread.start()
+        self.__threads.append((thread, worker)) 
+
+
 
     def clickMethod(self):
 
+        self.spinner.start()
+
         self.search = self.line.text()
         print('searching "' + self.search + '"...')
+
+        idx = 'clickMethod'
+        worker = Worker(idx, self.search)
+        thread = QThread()
+        thread.setObjectName('thread_' + idx)
+        self.__threads.append((thread, worker)) 
+        worker.moveToThread(thread)
+
+        worker.sig_data.connect(self.on_click_data_received)
+
+        self.sig_abort_workers.connect(worker.abort)
+
+        thread.started.connect(worker.grabData)
+        thread.start()  
+
+
+    @pyqtSlot(dict)
+    def on_click_data_received(self, data):
+
+        self.data = data
+
         search_term = self.search
-        if len(search_term) > 25:
+
+        if len(self.history['data']) == 0:
+            title_box = 'Trending Stories'
+        elif len(search_term) > 25:
             title_box = 'results: "' + search_term[:22] + '..."'
         else:
             title_box = 'results: "' + search_term + '"'
 
-        self.data = grabData(search_term)
+        if len(self.history['data']) > 0:
+            for b in self.inactive_buttons:
+                b.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
+                b.setCursor(Qt.PointingHandCursor)
+
         self.history['data'].append(self.data)
         self.history['title_boxes'].append(title_box)
         self.history['urls'].append(self.data['playlist_url'])
         self.history['page_numbers'].append(1)
-        for b in self.inactive_buttons:
-            b.setStyleSheet("color: "+FOREGROUND_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+FOREGROUND_COLOR+"; font-family: "+FONT+";")
-            b.setCursor(Qt.PointingHandCursor)
+
         self.populate()
         groupbox = QGroupBox(title_box)
         groupbox.setLayout(self.myform)
         groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
         self.scroll.setWidget(groupbox)
+        self.spinner.stop()
 
 
     def populate(self):
@@ -390,19 +571,27 @@ class Window(QWidget):
 
         label = self.sender()
 
-        title_long = label.title.replace(' ','-')
-        title_short = title_long[:20]
+        idx = label.title
+        worker = Worker(idx, label.url, label=self.download_label)
+        thread = QThread()
+        thread.setObjectName('thread_' + idx)
+        self.__threads.append((thread, worker))  # need to store worker too otherwise will be gc'd
+        worker.moveToThread(thread)
 
-        ydl_opts = {
-            'logger': MyLogger(),
-            'progress_hooks': [my_hook],
-            'outtmpl': DOWNLOAD_LOCATION + title_long
-        }
+        worker.sig_msg.connect(self.on_download_complete)
 
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([label.url])
+        self.sig_abort_workers.connect(worker.abort)
 
-        vid_path = [DOWNLOAD_LOCATION + file for file in os.listdir(DOWNLOAD_LOCATION) if file.startswith(title_long)][0]
+        # get read to start worker:
+        thread.started.connect(worker.download)
+        thread.start()  # this will emit 'started' and start thread's event loop
+
+    @pyqtSlot(str)
+    def on_download_complete(self, title):
+
+        title_short = title[:20]
+
+        vid_path = [DOWNLOAD_LOCATION + file for file in os.listdir(DOWNLOAD_LOCATION) if file.startswith(title)][0]
 
         self.downloaded_videos['short_titles'].append(title_short)
         self.downloaded_videos['paths'].append(vid_path)
@@ -452,7 +641,7 @@ class Window(QWidget):
 
     def on_back_clicked(self):
         if len(self.history['urls'])>1:
-            self.search = ''
+            #self.search = ''
             self.history['urls'].pop(-1)
             self.history['page_numbers'].pop(-1)
             self.history['data'].pop(-1)
@@ -495,6 +684,9 @@ class Window(QWidget):
 
 
     def get_next_page(self):
+
+        self.spinner.start()
+
         search_term = self.search
 
         try:
@@ -517,8 +709,31 @@ class Window(QWidget):
         if next_page_number > 1:
             title_box = title_box[:29] + ' page ' + str(next_page_number)
 
+        self.history['title_boxes'].append(title_box)
+
         data_limits = [NUM_RESULTS * (next_page_number - 1), NUM_RESULTS * next_page_number ]
-        self.data = grabData(url, search=False, limit=data_limits)
+        
+        idx = 'get_next_page'
+        worker = Worker(idx, url, search=False, limit=data_limits)
+        thread = QThread()
+        thread.setObjectName('thread_' + idx)
+        self.__threads.append((thread, worker)) 
+        worker.moveToThread(thread)
+
+        worker.sig_data.connect(self.on_next_page_received)
+
+        self.sig_abort_workers.connect(worker.abort)
+
+        thread.started.connect(worker.grabData)
+        thread.start()  
+
+    @pyqtSlot(dict)
+    def on_next_page_received(self, data):
+
+        search_term = self.search
+
+        self.data = data
+
         self.history['data'].append(self.data)
 
         for b in self.inactive_buttons:
@@ -527,90 +742,22 @@ class Window(QWidget):
 
         self.populate()
 
-        self.history['title_boxes'].append(title_box)
-        groupbox = QGroupBox(title_box)
+        groupbox = QGroupBox(self.history['title_boxes'][-1])
         groupbox.setLayout(self.myform)
         groupbox.setStyleSheet("color: "+FOREGROUND_COLOR+"; font-family: "+FONT+";font-style: italic")
         self.scroll.setWidget(groupbox)
+        self.spinner.stop()
 
+    @pyqtSlot()
+    def abort_workers(self):
+        self.sig_abort_workers.emit()
+        for thread, worker in self.__threads:  # note nice unpacking by Python, avoids indexing
+            thread.quit()  # this will quit **as soon as thread event loop unblocks**
+            thread.wait()  # <- so you need to wait for it to *actually* quit
 
-def grabData(search_term, search=True, limit=[0,NUM_RESULTS]):
-
-    #TODO: fetch next page of results
-    
-    if search:
-        pl_url = 'https://www.youtube.com/results?search_query='+ search_term.replace(' ','+')
-
-    else: # allow start page to be set by url rather than search term
-        pl_url=search_term
-
-    data = {'urls': [], 'titles': [], 'thumb_urls': [], 'thumb_paths': [], 
-        'durations': [], 'views': [], 'ratings': [], 'dates': [], 
-        'playlist_url': pl_url, 'total_videos': 0}
-
-
-    meta_opts = {'extract_flat': True, 'quiet': True} 
-
-    with youtube_dl.YoutubeDL(meta_opts) as ydl:
-        meta = ydl.extract_info(pl_url, download=False)
-
-    for e in meta['entries']:
-        data['urls'].append('https://www.youtube.com/watch?v=' + e.get('url'))
-        data['titles'].append(e.get('title'))
-
-    data['total_videos'] = len(meta['entries'])
-    data['urls'] = data['urls'][limit[0]:limit[1]]
-    data['titles'] = data['titles'][limit[0]:limit[1]]
-
-    #TODO: create faster way of getting thumbnails using beautifulsoup
-
-    for u in data['urls']:
-        with youtube_dl.YoutubeDL(meta_opts) as ydl:
-            try:
-                d = ydl.extract_info(u, download=False)
-
-            except: # youtube-dl playlists capture non-playable media such as paid videos. skip these items
-                print('skipping ' + u)
-                pass
-
-            data['thumb_urls'].append(d['thumbnail'])
-
-            if d['duration'] == 0.0: # live videos appear to give youtube-dl trouble
-                duration = 'LIVE'
-            elif d['duration'] < 3600:
-                duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
-            else:
-                duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
-            #print(duration)
-            data['durations'].append(duration)
-
-            views = d['view_count']
-            if views > 1000000:
-                views_abbr = str(int(views/1000000))+'M'
-            elif views > 1000:
-                views_abbr = str(int(views/1000))+'K'
-            else: 
-                views_abbr = str(views)
-            data['views'].append(views_abbr)
-            try:
-                rating=str(int(100*(d['like_count']/(d['like_count']+d['dislike_count']))))+'%'
-            except:
-                rating='100%'
-            data['ratings'].append(rating)
-
-            upload_date = d['upload_date']
-            formatted_date = upload_date[4:6] + '-' + upload_date[-2:] + '-' + upload_date[:4]
-            data['dates'].append(formatted_date)
-
-        time.sleep(.05)
-
-    date = time.strftime("%d-%m-%Y--%H-%M-%S")
-    image_dir = '/tmp/qt/yt-thumbs/'+date+'/'
-    mktmpdir(image_dir)
-    for i, image in enumerate(data['thumb_urls']):
-        data['thumb_paths'].append(dl_image(image,image_dir, i))
-
-    return data
+        # even though threads have exited, there may still be messages on the main thread's
+        # queue (messages that threads emitted before the abort):
+        self.log.append('All threads exited')
 
 def dl_image(u, path, index):
 
