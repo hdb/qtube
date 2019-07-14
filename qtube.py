@@ -89,14 +89,21 @@ class Worker(QObject):
     sig_msg = pyqtSignal(str)  # message to be shown to user
     sig_data = pyqtSignal(dict)
 
-    def __init__(self, id, search_term, search=True, limit=[0,NUM_RESULTS], label=None):
+    meta_opts = {'extract_flat': True, 'quiet': True} 
+
+    def __init__(self, id, search_term, search=True, limit=[0,NUM_RESULTS], label=None, image_dir=None):
         super().__init__()
+
         self.__id = id
         self.__abort = False
         self.search_term = search_term
         self.search = search
         self.limit = limit
         self.label = label
+        self.data = None
+        self.temp_data = {}
+        self.image_dir = image_dir
+        self.__threads = []
 
 
     @pyqtSlot()
@@ -112,10 +119,7 @@ class Worker(QObject):
             'durations': [], 'views': [], 'ratings': [], 'dates': [], 
             'playlist_url': pl_url, 'total_videos': 0, 'page_title': ''}
 
-
-        meta_opts = {'extract_flat': True, 'quiet': True} 
-
-        with youtube_dl.YoutubeDL(meta_opts) as ydl:
+        with youtube_dl.YoutubeDL(self.meta_opts) as ydl:
             meta = ydl.extract_info(pl_url, download=False)
 
         for e in meta['entries']:
@@ -128,55 +132,30 @@ class Worker(QObject):
         data['urls'] = data['urls'][self.limit[0]:self.limit[1]]
         data['titles'] = data['titles'][self.limit[0]:self.limit[1]]
 
-        #TODO: create faster way of getting thumbnails using beautifulsoup
-
-        for u in data['urls']:
-            with youtube_dl.YoutubeDL(meta_opts) as ydl:
-                try:
-                    d = ydl.extract_info(u, download=False)
-
-                except: # youtube-dl playlists capture non-playable media such as paid videos. skip these items
-                    print('skipping ' + u)
-                    pass
-
-                data['thumb_urls'].append(d['thumbnail'])
-
-                if d['duration'] == 0.0: # live videos appear to give youtube-dl trouble
-                    duration = 'LIVE'
-                elif d['duration'] < 3600:
-                    duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
-                else:
-                    duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-(int(d['duration']/3600))*3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
-                #print(duration)
-                data['durations'].append(duration)
-
-                views = d['view_count']
-                if views > 1000000:
-                    views_abbr = str(int(views/1000000))+'M'
-                elif views > 1000:
-                    views_abbr = str(int(views/1000))+'K'
-                else: 
-                    views_abbr = str(views)
-                data['views'].append(views_abbr)
-                try:
-                    rating=str(int(100*(d['like_count']/(d['like_count']+d['dislike_count']))))+'%'
-                except:
-                    rating='100%'
-                data['ratings'].append(rating)
-
-                upload_date = d['upload_date']
-                formatted_date = upload_date[4:6] + '-' + upload_date[-2:] + '-' + upload_date[:4]
-                data['dates'].append(formatted_date)
-
-            time.sleep(.05)
-
         date = time.strftime("%d-%m-%Y--%H-%M-%S")
         image_dir = '/tmp/qt/yt-thumbs/'+date+'/'
         mktmpdir(image_dir)
-        for i, image in enumerate(data['thumb_urls']):
-            data['thumb_paths'].append(dl_image(image,image_dir, i))
 
-        self.sig_data.emit(data)
+        self.data = data
+        thread_dict = {}
+
+        for i,u in enumerate(data['urls']):
+
+            idx = str(i)
+            worker = Worker(idx, u, image_dir=image_dir)
+            thread = QThread()
+            thread.setObjectName('thread_' + idx)
+            worker.moveToThread(thread)
+            
+            worker.sig_data.connect(self.on_individ_data_received)
+
+            thread.started.connect(worker.indiv_video_data)
+            thread.start()
+            self.__threads.append((thread, worker)) 
+            thread_dict[idx]=thread
+
+        for x in thread_dict:
+            thread_dict[x].wait()
 
     def download(self):
 
@@ -203,6 +182,74 @@ class Worker(QObject):
         if d['status'] == 'downloading':
             self.label.setText(d['_percent_str'] + ' ' + d['_eta_str'])
 
+    @pyqtSlot()
+    def indiv_video_data(self):
+
+        data = {}
+        with youtube_dl.YoutubeDL(self.meta_opts) as ydl:
+            try:
+                d = ydl.extract_info(self.search_term, download=False)
+
+                data['thumb_urls'] = d['thumbnail']
+
+                if d['duration'] == 0.0: # live videos appear to give youtube-dl trouble
+                    duration = 'LIVE'
+                elif d['duration'] < 3600:
+                    duration = str(int(d['duration']/60))+':'+"{0:0=2d}".format(d['duration']%60)
+                else:
+                    duration = str(int(d['duration']/3600))+':'+"{0:0=2d}".format(int((d['duration']-(int(d['duration']/3600))*3600)/60))+':'+"{0:0=2d}".format(d['duration']%60)
+                #print(duration)
+                data['durations'] = duration
+
+                views = d['view_count']
+                if views > 1000000:
+                    views_abbr = str(int(views/1000000))+'M'
+                elif views > 1000:
+                    views_abbr = str(int(views/1000))+'K'
+                else: 
+                    views_abbr = str(views)
+                data['views'] = views_abbr
+                try:
+                    rating=str(int(100*(d['like_count']/(d['like_count']+d['dislike_count']))))+'%'
+                except:
+                    rating='100%'
+                data['ratings'] = rating
+
+                upload_date = d['upload_date']
+                formatted_date = upload_date[4:6] + '-' + upload_date[-2:] + '-' + upload_date[:4]
+                data['dates'] = formatted_date
+
+                data['thumb_paths'] = dl_image(data['thumb_urls'], self.image_dir, self.__id)
+
+            except: # youtube-dl playlists capture non-playable media such as paid videos. skip these items
+                print('skipping ' + self.search_term)
+            
+        data['idx'] = self.__id
+
+        self.sig_data.emit(data)
+
+        QThread.currentThread().terminate()
+
+    @pyqtSlot(dict)
+    def on_individ_data_received(self, i_data):
+
+        if len(i_data) == 1:
+            for e in self.data:
+                try:
+                    self.data[e].pop(int(i_data['idx']))
+                except:
+                    pass
+        else:
+            self.temp_data[i_data['idx']] = i_data
+
+        # if final run, add temp data and return data to main thread
+        if len(self.temp_data) == len(self.data['urls']):
+            for i in sorted(self.temp_data):
+                for e in self.temp_data[i]:
+                    if 'idx' not in e:
+                        self.data[e].append(self.temp_data[i][e])
+
+            self.sig_data.emit(self.data)
 
     def abort(self):
         self.sig_msg.emit('Worker {} notified to abort'.format(self.__id))
@@ -530,7 +577,8 @@ class Window(QWidget):
     @pyqtSlot(dict)
     def on_click_data_received(self, data):
 
-        self.data = data
+
+        self.data = sort_dict_lists_by_list(data, 'titles')
 
         search_term = self.search
 
@@ -841,6 +889,12 @@ def mktmpdir(directory):
 
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+def sort_dict_lists_by_list(data, sort_by):
+
+    #[[data[j][i] for i in [data[sort_by].index(v) for v in sorted(data[sort_by])]] for j in data]
+
+    return data
 
 
 if __name__ == '__main__':
