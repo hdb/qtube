@@ -488,6 +488,9 @@ class Window(QWidget):
         self.player.register_key_binding('esc', self.fullscreen_off)
         self.isFullScreen = False
 
+        self.player.register_key_binding('WHEEL_LEFT', 'seek 1')
+        self.player.register_key_binding('WHEEL_RIGHT', 'seek -1')
+
         searchbarlayout = QHBoxLayout()
         searchbarlayout.addWidget(self.line)
         searchbarlayout.addWidget(self.search_button)
@@ -687,6 +690,7 @@ class Window(QWidget):
         label = self.sender()
         self.url = label.url
         self.player.play(self.url)
+        #self.player.command('show-text', label.title)
 
 
     def on_download_clicked(self):
