@@ -474,8 +474,11 @@ class Window(QWidget):
                 input_default_bindings=True, 
                 input_vo_keyboard=True,
                 keep_open=True,
-                scripts=str(Path.home())+'/.config/mpv/scripts/live-filters.lua', # option to add custom script / currently no way of importing multiple scripts with MPV API
+                reset_on_next_file='pause',
         )
+
+        script_dir = str(Path.home())+'/.config/mpv/scripts/'
+        [self.player.command('load-script', script_dir+script) for script in os.listdir(script_dir)]        
 
         player_exit_shortcuts = ['q','ctrl+q','ctrl+w']
         for sc in player_exit_shortcuts:
