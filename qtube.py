@@ -524,6 +524,7 @@ class Window(QWidget):
         biglayout = QHBoxLayout(self)
         biglayout.addWidget(self.left)
         biglayout.addWidget(self.container)
+        biglayout.setContentsMargins(0,0,0,0)
 
         # load home page data
         self.spinner.start()
