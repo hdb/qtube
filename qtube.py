@@ -910,6 +910,7 @@ if __name__ == '__main__':
     import sys
     import locale
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(os.path.dirname(os.path.realpath(__file__))+'/assets/icon.png'))
     locale.setlocale(locale.LC_NUMERIC, 'C')
 
     window = Window(25)
