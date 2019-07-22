@@ -26,6 +26,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('-u', '--home-url', nargs='?', help="playlist url to fetch on opening", metavar='')
 parser.add_argument('-c', '--color', nargs='*', default=[], help="specify foreground color, background color, inactive color", metavar='')
+parser.add_argument('-r', '--resolution', nargs='?', type=int, help="resolution of player (height)", metavar='')
 parser.add_argument('-d', '--download-to', nargs='?', help="directory to download videos to", metavar='')
 parser.add_argument('-s', '--search', nargs='*', help="skip loading home page and search", metavar='')
 parser.add_argument('-n', '--number', nargs='?', type=int, help="number of results to load per page", metavar='')
@@ -37,6 +38,11 @@ FLAGS = Qt.KeepAspectRatioByExpanding
 LIST_WIDTH = 400
 FONT = 'Courier'
 TEXT_LENGTH = 20
+if args.resolution is None:
+    PLAYER_HEIGHT = 480
+else:
+    PLAYER_HEIGHT = args.resolution
+PLAYER_SIZE = QSize((PLAYER_HEIGHT/9)*16, PLAYER_HEIGHT)
 
 if len(args.color) == 0: 
     colors = ['red', 'white', 'grey']
@@ -362,14 +368,43 @@ class MyLogger(object):
     def error(self, msg):
         print(msg)
 
+class VideoContainer(QWidget):
+
+    #sig_height = pyqtSignal(int)
+
+    def __init__(self, size, parent=None):
+        super(QWidget, self).__init__(parent)
+        self.initsize = size
+        sizePolicy = QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        # sizePolicy.setHeightForWidth(True)
+        self.setSizePolicy(sizePolicy)
+
+    # def heightForWidth(self, width):
+    #     return 9 * (width / 16)
+
+    # def hasHeightForWidth(self):
+    #     return True
+
+    def sizeHint(self):
+        return self.initsize
+
+    # @pyqtSlot(int)
+    # def resizeEvent(self, event):
+    #     newwidth = event.size().width()
+    #     newheight = self.heightForWidth(newwidth)
+    #     print(newheight)
+    #     self.setFixedHeight(newheight)
+    #     self.updateGeometry()
+    #     self.sig_height.emit(newheight)
+        
+
 
 class Window(QWidget):
 
     sig_abort_workers = pyqtSignal()
 
-    def __init__(self, val, parent=None):
+    def __init__(self, val, screenwidth, screenheight, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(QSize(1800, 800))
         self.setWindowTitle("qtube")
 
         app_exit_shortcuts = ["Ctrl+Q", "Ctrl+W"]
@@ -466,9 +501,11 @@ class Window(QWidget):
         self.play_downloaded_button.setStyleSheet("color: "+INACTIVE_COLOR+"; background-color: "+BACKGROUND_COLOR+"; border: 1px solid "+INACTIVE_COLOR+"; font-family: "+FONT+";")
 
 
-        self.container = QWidget()
+        self.container = VideoContainer(PLAYER_SIZE)
         self.container.setAttribute(Qt.WA_DontCreateNativeAncestors)
-        self.container.setAttribute(Qt.WA_NativeWindow)       
+        self.container.setAttribute(Qt.WA_NativeWindow)
+        #self.container.sig_height.connect(self.resizeWindow)
+
         self.player = mpv.MPV(wid=str(int(self.container.winId())),
                 ytdl=True, 
                 input_default_bindings=True, 
@@ -526,6 +563,9 @@ class Window(QWidget):
         biglayout.addWidget(self.container)
         biglayout.setContentsMargins(0,0,0,0)
 
+        self.move((screenwidth - PLAYER_SIZE.width() - LIST_WIDTH) / 2, (screenheight - PLAYER_SIZE.height()) / 2)
+
+
         # load home page data
         self.spinner.start()
 
@@ -557,6 +597,10 @@ class Window(QWidget):
             self.left.setFixedWidth(LIST_WIDTH)
             self.isFullScreen = False
             time.sleep(.5)
+
+    # @pyqtSlot(int)
+    # def resizeWindow(self, newheight):
+    #     self.setFixedHeight(newheight)
 
 
     def clickMethod(self):
@@ -913,6 +957,9 @@ if __name__ == '__main__':
     app.setWindowIcon(QIcon(os.path.dirname(os.path.realpath(__file__))+'/assets/icon.png'))
     locale.setlocale(locale.LC_NUMERIC, 'C')
 
-    window = Window(25)
+    screen_rect = app.desktop().screenGeometry()
+    width, height = screen_rect.width(), screen_rect.height()
+
+    window = Window(25, width, height)
     window.show()
     sys.exit(app.exec_())
