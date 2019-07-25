@@ -207,19 +207,9 @@ class Worker(QObject):
                 #print(duration)
                 data['durations'] = duration
 
-                views = d['view_count']
-                if views > 1000000:
-                    views_abbr = str(int(views/1000000))+'M'
-                elif views > 1000:
-                    views_abbr = str(int(views/1000))+'K'
-                else: 
-                    views_abbr = str(views)
-                data['views'] = views_abbr
-                try:
-                    rating=str(int(100*(d['like_count']/(d['like_count']+d['dislike_count']))))+'%'
-                except:
-                    rating='100%'
-                data['ratings'] = rating
+                data['views'] = abbreviate_big_num(d['view_count'])
+
+                data['ratings'] = abbreviate_big_num(d['like_count'])
 
                 upload_date = d['upload_date']
                 formatted_date = upload_date[4:6] + '-' + upload_date[-2:] + '-' + upload_date[:4]
@@ -673,7 +663,7 @@ class Window(QWidget):
             else: # catch errors from youtube-dl failing to capture video title
                 title = '[TITLE MISSING]'
 
-            text =  title + '\n' + self.data['durations'][i] + ' | ' + self.data['dates'][i] + '\n' + self.data['views'][i] + ' views | rated ' + self.data['ratings'][i] 
+            text =  title + '\n' + self.data['durations'][i] + ' | ' + self.data['dates'][i] + '\n' + self.data['views'][i] + ' views | ' + self.data['ratings'][i] + ' likes'
             
             descLabel = DescriptionLabel(self.data['urls'][i], self.data['titles'][i])
             descLabel.setText(text)
@@ -941,6 +931,25 @@ def mktmpdir(directory):
 
     if not os.path.exists(directory):
         os.makedirs(directory)
+
+
+def abbreviate_big_num(number):
+    
+    if number > 10000000:
+        number_abbr = str(int(number/1000000))+'M'
+    elif number > 1000000:
+        number_tmp = str(int(number/100000))
+        number_abbr = number_tmp[:-1] + '.' + number_tmp[-1] + 'M'
+    elif number > 10000:
+        number_abbr = str(int(number/1000))+'K'
+    elif number > 1000:
+        number_tmp = str(int(number/100))
+        number_abbr = number_tmp[:-1] + '.' + number_tmp[-1] + 'K'
+    else: 
+        number_abbr = str(number)
+
+    return number_abbr
+
 
 def sort_dict_lists_by_list(data, sort_by):
 
