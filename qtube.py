@@ -33,11 +33,14 @@ parser.add_argument('-n', '--number', nargs='?', type=int, help="number of resul
 
 args = parser.parse_args()
 
-THUMB_SIZE = QSize(128,72)
 FLAGS = Qt.KeepAspectRatioByExpanding
+THUMB_WIDTH = 128
+THUMB_SIZE = QSize(THUMB_WIDTH,(THUMB_WIDTH/16)*9)
 LIST_WIDTH = 400
+TEXT_WIDTH = LIST_WIDTH - THUMB_SIZE.width() - 65
 FONT = 'Courier'
-TEXT_LENGTH = 20
+TEXT_LENGTH = int(TEXT_WIDTH/10)
+
 if args.resolution is None:
     PLAYER_HEIGHT = 480
 else:
@@ -667,6 +670,7 @@ class Window(QWidget):
             
             descLabel = DescriptionLabel(self.data['urls'][i], self.data['titles'][i])
             descLabel.setText(text)
+            descLabel.setMaximumWidth(TEXT_WIDTH)
             descLabel.video_clicked.connect(self.on_video_clicked)
             descLabel.download_clicked.connect(self.on_download_clicked)
             labellist.append(descLabel)
