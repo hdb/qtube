@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#! /usr/bin/env python3
 
 import mpv
 import re
@@ -35,7 +35,7 @@ args = parser.parse_args()
 
 FLAGS = Qt.KeepAspectRatioByExpanding
 THUMB_WIDTH = 128
-THUMB_SIZE = QSize(THUMB_WIDTH,(THUMB_WIDTH/16)*9)
+THUMB_SIZE = QSize(THUMB_WIDTH,(int(THUMB_WIDTH/16))*9)
 LIST_WIDTH = 400
 TEXT_WIDTH = LIST_WIDTH - THUMB_SIZE.width() - 65
 FONT = 'Courier'
@@ -45,20 +45,10 @@ if args.resolution is None:
     PLAYER_HEIGHT = 480
 else:
     PLAYER_HEIGHT = args.resolution
-PLAYER_SIZE = QSize((PLAYER_HEIGHT/9)*16, PLAYER_HEIGHT)
+PLAYER_SIZE = QSize(int((PLAYER_HEIGHT/9)*16), PLAYER_HEIGHT)
 
-if len(args.color) == 0: 
-    colors = ['red', 'white', 'grey']
-elif len(args.color) == 1: 
-    colors = [args.color[0], 'white', 'grey']
-elif len(args.color) == 2: 
-    colors = [args.color[0], args.color[1], 'grey']
-else: 
-    colors = args.color[:3]
-
-FOREGROUND_COLOR = colors[0]
-BACKGROUND_COLOR = colors[1]
-INACTIVE_COLOR = colors[2]
+default_colors = ['red', 'white', 'grey']
+FOREGROUND_COLOR, BACKGROUND_COLOR, INACTIVE_COLOR = (args.color + default_colors[len(args.color):])[:3]
 
 if args.number is None:
     NUM_RESULTS = 10
@@ -556,7 +546,7 @@ class Window(QWidget):
         biglayout.addWidget(self.container)
         biglayout.setContentsMargins(0,0,0,0)
 
-        self.move((screenwidth - PLAYER_SIZE.width() - LIST_WIDTH) / 2, (screenheight - PLAYER_SIZE.height()) / 2)
+        self.move(int((screenwidth - PLAYER_SIZE.width() - LIST_WIDTH) / 2), int((screenheight - PLAYER_SIZE.height()) / 2))
 
 
         # load home page data
