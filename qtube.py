@@ -495,6 +495,7 @@ class Window(QWidget):
                 input_vo_keyboard=True,
                 keep_open=True,
                 reset_on_next_file='pause',
+                osd_bar=True,
         )
 
         script_dir = str(Path.home())+'/.config/mpv/scripts/'
