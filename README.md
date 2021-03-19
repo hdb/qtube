@@ -15,15 +15,15 @@
 
 ## Setup
 
-```
-git clone git@github.com:hdbhdb/qtube.git
+```bash
+git clone git@github.com:hdb/qtube.git
 cd qtube
 pip install -r requirements.txt
 ```
 
 Then to run qtube:
 
-```
+```bash
 python qtube.py
 ```
 
@@ -62,12 +62,7 @@ Most mpv keybindings will work when the mpv player is selected. Important differ
 
 - `q` quits the application, not just the player
 - `f` brings the player to fullscreen, but `esc` is used to leave fullscreen
-- `ctrl+q` and `ctrl+w` quit the application, regardless whether the player or the video search panel is selected
+- `ctrl+q` and `ctrl+w` quit the application regardless whether the player or the video search panel is selected
 
 
 See the [mpv manual](https://mpv.io/manual/stable/#keyboard-control) for details on mpv-specific keybindings.  
-
-
-
-
-    
